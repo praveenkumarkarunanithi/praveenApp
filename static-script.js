@@ -330,46 +330,19 @@ function sendToWhatsApp() {
         return;
     }
     
-    // Find customer phone number
-    const customer = customers.find(c => c.name === currentBillData.customerName);
-    const customerPhone = customer ? customer.phone : '';
-    
     // Create WhatsApp messages
     const customerMessage = createCustomerWhatsAppMessage(currentBillData);
     const ownerMessage = createOwnerWhatsAppMessage(currentBillData);
     
-    const encodedCustomerMessage = encodeURIComponent(customerMessage);
-    const encodedOwnerMessage = encodeURIComponent(ownerMessage);
+    // Copy customer message to clipboard
+    copyToClipboard(customerMessage);
     
-    // Get owner phone from input
-    const ownerPhone = currentBillData.ownerPhone;
+    // Open WhatsApp Web without specific number - just opens the main interface
+    const whatsappUrl = 'https://web.whatsapp.com/';
+    window.open(whatsappUrl, '_blank');
     
-    let messagesSent = 0;
-    
-    // Send to customer if phone number exists
-    if (customerPhone) {
-        const customerUrl = `https://wa.me/${customerPhone.replace('+', '')}?text=${encodedCustomerMessage}`;
-        window.open(customerUrl, '_blank');
-        messagesSent++;
-        
-        showNotification(`WhatsApp message opened for customer: ${currentBillData.customerName}`, 'success');
-    } else {
-        showNotification(`No phone number found for customer: ${currentBillData.customerName}`, 'error');
-    }
-    
-    // Always send to owner (with delay to avoid popup blocking)
-    setTimeout(() => {
-        const ownerUrl = `https://wa.me/${ownerPhone.replace('+', '')}?text=${encodedOwnerMessage}`;
-        window.open(ownerUrl, '_blank');
-        messagesSent++;
-        
-        showNotification(`WhatsApp message opened for owner: ${currentBillData.ownerName}`, 'success');
-        
-        // Summary notification
-        setTimeout(() => {
-            showNotification(`${messagesSent} WhatsApp messages opened successfully!`, 'info');
-        }, 1000);
-    }, 1500);
+    // Show instructions for demo
+    showDemoInstructions(customerMessage, ownerMessage);
 }
 
 function createCustomerWhatsAppMessage(data) {
@@ -415,6 +388,126 @@ function createOwnerWhatsAppMessage(data) {
 ${data.remainingBalance > 0 ? '⚠️ *PENDING BALANCE: ₹' + data.remainingBalance + '*' : '✅ *ACCOUNT CLEARED*'}
 
 *Thanjavur Fish Sales - Owner Copy*`;
+}
+
+function copyToClipboard(text) {
+    // Try to use the modern clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            console.log('Message copied to clipboard');
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            fallbackCopyTextToClipboard(text);
+        });
+    } else {
+        fallbackCopyTextToClipboard(text);
+    }
+}
+
+function fallbackCopyTextToClipboard(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.position = "fixed";
+    textArea.style.opacity = "0";
+    
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+        document.execCommand('copy');
+        console.log('Fallback: Message copied to clipboard');
+    } catch (err) {
+        console.error('Fallback: Unable to copy', err);
+    }
+    
+    document.body.removeChild(textArea);
+}
+
+function showDemoInstructions(customerMessage, ownerMessage) {
+    // Remove any existing demo modal
+    const existingModal = document.getElementById('demoModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Create demo instructions modal
+    const modal = document.createElement('div');
+    modal.id = 'demoModal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+    
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="bg-green-500 text-white p-3 rounded-full">
+                        <i class="fab fa-whatsapp text-xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-800">WhatsApp Demo Instructions</h3>
+                        <p class="text-gray-600">Customer bill message copied to clipboard!</p>
+                    </div>
+                </div>
+                
+                <div class="space-y-6">
+                    <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
+                        <h4 class="font-semibold text-blue-800 mb-2">📱 Demo Steps:</h4>
+                        <ol class="text-blue-700 space-y-2 text-sm">
+                            <li><strong>1.</strong> WhatsApp Web is opening in new tab</li>
+                            <li><strong>2.</strong> Search for any contact manually</li>
+                            <li><strong>3.</strong> Paste the copied message (Ctrl+V / Cmd+V)</li>
+                            <li><strong>4.</strong> Show the professional bill format</li>
+                            <li><strong>5.</strong> Demonstrate the complete flow!</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-gray-800 mb-3">📋 Customer Message (Already Copied):</h4>
+                        <div class="bg-white p-3 rounded border text-sm font-mono text-gray-700 max-h-40 overflow-y-auto">
+                            ${customerMessage.replace(/\n/g, '<br>')}
+                        </div>
+                        <button onclick="copyToClipboard(\`${customerMessage.replace(/`/g, '\\`')}\`)" 
+                                class="mt-2 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                            📋 Copy Customer Message
+                        </button>
+                    </div>
+                    
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-gray-800 mb-3">👔 Owner Message:</h4>
+                        <div class="bg-white p-3 rounded border text-sm font-mono text-gray-700 max-h-40 overflow-y-auto">
+                            ${ownerMessage.replace(/\n/g, '<br>')}
+                        </div>
+                        <button onclick="copyToClipboard(\`${ownerMessage.replace(/`/g, '\\`')}\`)" 
+                                class="mt-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm">
+                            📋 Copy Owner Message
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3 mt-6 pt-4 border-t">
+                    <button onclick="window.open('https://web.whatsapp.com/', '_blank')" 
+                            class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-semibold">
+                        🔗 Open WhatsApp Web Again
+                    </button>
+                    <button onclick="document.getElementById('demoModal').remove()" 
+                            class="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg font-semibold">
+                        ✅ Close Instructions
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Close modal when clicking outside
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
 }
 
 function showSuccess() {
