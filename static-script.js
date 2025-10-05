@@ -1,0 +1,469 @@
+// Global variables
+let customers = [
+  {
+    "name": "Murugan Fish Mart",
+    "balance": 1500,
+    "phone": "+919876543210"
+  },
+  {
+    "name": "Selva Seafoods",
+    "balance": 2500,
+    "phone": "+919876543211"
+  },
+  {
+    "name": "Kannan Traders",
+    "balance": 800,
+    "phone": "+919876543212"
+  },
+  {
+    "name": "Raja Fish Center",
+    "balance": 3200,
+    "phone": "+919876543213"
+  },
+  {
+    "name": "Kumaran Exports",
+    "balance": 0,
+    "phone": "+919876543214"
+  }
+];
+
+let currentBillData = null;
+
+// DOM elements
+const customerSelect = document.getElementById('customerName');
+const oldBalanceInput = document.getElementById('oldBalance');
+const quantityInput = document.getElementById('quantity');
+const rateInput = document.getElementById('rate');
+const amountInput = document.getElementById('amount');
+const paymentMadeInput = document.getElementById('paymentMade');
+const remainingBalanceInput = document.getElementById('remainingBalance');
+const dateInput = document.getElementById('date');
+const ownerPhoneInput = document.getElementById('ownerPhone');
+const ownerNameInput = document.getElementById('ownerName');
+const billingForm = document.getElementById('billingForm');
+const generateBillBtn = document.getElementById('generateBillBtn');
+const whatsappBtn = document.getElementById('whatsappBtn');
+const successMessage = document.getElementById('successMessage');
+const loadingOverlay = document.getElementById('loadingOverlay');
+
+// Initialize the app
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+});
+
+function initializeApp() {
+    // Set current date
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.value = today;
+    
+    // Load customers (static data)
+    loadCustomers();
+    
+    // Setup event listeners
+    setupEventListeners();
+}
+
+function loadCustomers() {
+    try {
+        // Populate customer dropdown with static data
+        customerSelect.innerHTML = '<option value="">Select Customer</option>';
+        customers.forEach(customer => {
+            const option = document.createElement('option');
+            option.value = customer.name;
+            option.textContent = customer.name;
+            option.dataset.balance = customer.balance;
+            option.dataset.phone = customer.phone;
+            customerSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading customers:', error);
+        showNotification('Error loading customers', 'error');
+    }
+}
+
+function setupEventListeners() {
+    // Customer selection
+    customerSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        if (selectedOption.dataset.balance) {
+            oldBalanceInput.value = selectedOption.dataset.balance;
+        } else {
+            oldBalanceInput.value = '';
+        }
+        calculateBalances();
+    });
+    
+    // Quantity and rate inputs for amount calculation
+    quantityInput.addEventListener('input', calculateAmount);
+    rateInput.addEventListener('input', calculateAmount);
+    
+    // Payment input for balance calculation
+    paymentMadeInput.addEventListener('input', calculateBalances);
+    
+    // Owner phone number formatting
+    ownerPhoneInput.addEventListener('input', function() {
+        let value = this.value.replace(/\D/g, ''); // Remove non-digits
+        if (value.length > 0 && !value.startsWith('91')) {
+            if (value.startsWith('9')) {
+                value = '91' + value;
+            } else {
+                value = '91' + value;
+            }
+        }
+        if (value.length > 12) {
+            value = value.substring(0, 12);
+        }
+        this.value = value ? '+' + value : '';
+    });
+    
+    // Form submission
+    billingForm.addEventListener('submit', handleFormSubmit);
+    
+    // WhatsApp button
+    whatsappBtn.addEventListener('click', sendToWhatsApp);
+}
+
+function calculateAmount() {
+    const quantity = parseFloat(quantityInput.value) || 0;
+    const rate = parseFloat(rateInput.value) || 0;
+    const amount = quantity * rate;
+    
+    amountInput.value = amount.toFixed(2);
+    calculateBalances();
+}
+
+function calculateBalances() {
+    const oldBalance = parseFloat(oldBalanceInput.value) || 0;
+    const amount = parseFloat(amountInput.value) || 0;
+    const paymentMade = parseFloat(paymentMadeInput.value) || 0;
+    
+    const remainingBalance = oldBalance + amount - paymentMade;
+    remainingBalanceInput.value = remainingBalance.toFixed(2);
+    
+    // Update styling based on balance
+    if (remainingBalance > 0) {
+        remainingBalanceInput.className = remainingBalanceInput.className.replace('bg-green-50 text-green-700', 'bg-red-50 text-red-700');
+    } else {
+        remainingBalanceInput.className = remainingBalanceInput.className.replace('bg-red-50 text-red-700', 'bg-green-50 text-green-700');
+    }
+}
+
+function handleFormSubmit(e) {
+    e.preventDefault();
+    
+    // Validate form
+    if (!validateForm()) {
+        return;
+    }
+    
+    // Prepare bill data
+    currentBillData = {
+        customerName: customerSelect.value,
+        fishType: document.getElementById('fishType').value,
+        quantity: parseFloat(quantityInput.value),
+        rate: parseFloat(rateInput.value),
+        amount: parseFloat(amountInput.value),
+        paymentMade: parseFloat(paymentMadeInput.value),
+        oldBalance: parseFloat(oldBalanceInput.value),
+        remainingBalance: parseFloat(remainingBalanceInput.value),
+        date: dateInput.value,
+        ownerPhone: ownerPhoneInput.value.trim(),
+        ownerName: ownerNameInput.value.trim() || 'Business Owner'
+    };
+    
+    // Generate PDF (static version)
+    generateStaticPDF();
+}
+
+function validateForm() {
+    const requiredFields = [
+        { element: customerSelect, name: 'Customer Name' },
+        { element: document.getElementById('fishType'), name: 'Fish Type' },
+        { element: quantityInput, name: 'Quantity' },
+        { element: rateInput, name: 'Rate' },
+        { element: paymentMadeInput, name: 'Payment Made' },
+        { element: ownerPhoneInput, name: 'Owner Phone Number' }
+    ];
+    
+    for (const field of requiredFields) {
+        if (!field.element.value.trim()) {
+            showNotification(`Please fill in ${field.name}`, 'error');
+            field.element.focus();
+            return false;
+        }
+    }
+    
+    if (parseFloat(quantityInput.value) <= 0) {
+        showNotification('Quantity must be greater than 0', 'error');
+        quantityInput.focus();
+        return false;
+    }
+    
+    if (parseFloat(rateInput.value) <= 0) {
+        showNotification('Rate must be greater than 0', 'error');
+        rateInput.focus();
+        return false;
+    }
+
+    // Validate phone number format
+    const phoneRegex = /^\+91[0-9]{10}$/;
+    if (!phoneRegex.test(ownerPhoneInput.value.trim())) {
+        showNotification('Owner phone number must be in format +91XXXXXXXXXX', 'error');
+        ownerPhoneInput.focus();
+        return false;
+    }
+    
+    return true;
+}
+
+function generateStaticPDF() {
+    showLoading(true);
+    
+    try {
+        // Using jsPDF for client-side PDF generation
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Header
+        doc.setFontSize(20);
+        doc.setTextColor(37, 99, 235); // Blue color
+        doc.text('THANJAVUR FISH SALES', 20, 30);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139); // Gray color
+        doc.text('Contact: +91-9876543210 | Email: info@thanjavurfish.com', 20, 40);
+        
+        // Line separator
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(1);
+        doc.line(20, 50, 190, 50);
+        
+        // Bill header
+        doc.setFontSize(16);
+        doc.setTextColor(30, 41, 59); // Dark color
+        doc.text('FISH PURCHASE BILL', 20, 65);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Date: ${currentBillData.date}`, 150, 65);
+        
+        // Customer details
+        doc.setFontSize(12);
+        doc.setTextColor(30, 41, 59);
+        doc.text('CUSTOMER DETAILS', 20, 85);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(55, 65, 81);
+        doc.text(`Customer Name: ${currentBillData.customerName}`, 20, 95);
+        
+        // Transaction table
+        const tableY = 110;
+        
+        // Table header
+        doc.setFillColor(248, 250, 252);
+        doc.rect(20, tableY, 170, 10, 'F');
+        
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59);
+        doc.text('ITEM', 25, tableY + 7);
+        doc.text('QTY (KG)', 70, tableY + 7);
+        doc.text('RATE (₹/KG)', 100, tableY + 7);
+        doc.text('AMOUNT (₹)', 140, tableY + 7);
+        
+        // Table border
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(20, tableY, 170, 10);
+        
+        // Transaction row
+        const rowY = tableY + 10;
+        doc.setTextColor(55, 65, 81);
+        doc.text(currentBillData.fishType, 25, rowY + 7);
+        doc.text(currentBillData.quantity.toString(), 70, rowY + 7);
+        doc.text(`₹${currentBillData.rate}`, 100, rowY + 7);
+        doc.text(`₹${currentBillData.amount}`, 140, rowY + 7);
+        
+        doc.rect(20, rowY, 170, 10);
+        
+        // Payment summary
+        const summaryY = rowY + 30;
+        doc.setFontSize(12);
+        doc.setTextColor(30, 41, 59);
+        doc.text('PAYMENT SUMMARY', 20, summaryY);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(55, 65, 81);
+        doc.text(`Total Amount: ₹${currentBillData.amount}`, 20, summaryY + 15);
+        doc.text(`Old Balance: ₹${currentBillData.oldBalance}`, 20, summaryY + 25);
+        doc.text(`Payment Made: ₹${currentBillData.paymentMade}`, 20, summaryY + 35);
+        
+        // Remaining balance (highlighted)
+        doc.setTextColor(220, 38, 38); // Red color
+        doc.setFont(undefined, 'bold');
+        doc.text(`Remaining Balance: ₹${currentBillData.remainingBalance}`, 20, summaryY + 45);
+        
+        // Footer
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont(undefined, 'normal');
+        doc.text('Thank you for your business! Fresh fish, honest prices.', 20, 250);
+        doc.text('For any queries, contact us at +91-9876543210', 20, 260);
+        
+        // Save the PDF
+        const filename = `bill_${currentBillData.customerName}_${currentBillData.date}.pdf`;
+        doc.save(filename);
+        
+        // Show success and enable WhatsApp
+        showSuccess();
+        whatsappBtn.disabled = false;
+        
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        showNotification('Error generating PDF. Please try again.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function sendToWhatsApp() {
+    if (!currentBillData) {
+        showNotification('Please generate a bill first', 'error');
+        return;
+    }
+    
+    // Find customer phone number
+    const customer = customers.find(c => c.name === currentBillData.customerName);
+    const customerPhone = customer ? customer.phone : '';
+    
+    // Create WhatsApp messages
+    const customerMessage = createCustomerWhatsAppMessage(currentBillData);
+    const ownerMessage = createOwnerWhatsAppMessage(currentBillData);
+    
+    const encodedCustomerMessage = encodeURIComponent(customerMessage);
+    const encodedOwnerMessage = encodeURIComponent(ownerMessage);
+    
+    // Get owner phone from input
+    const ownerPhone = currentBillData.ownerPhone;
+    
+    let messagesSent = 0;
+    
+    // Send to customer if phone number exists
+    if (customerPhone) {
+        const customerUrl = `https://wa.me/${customerPhone.replace('+', '')}?text=${encodedCustomerMessage}`;
+        window.open(customerUrl, '_blank');
+        messagesSent++;
+        
+        showNotification(`WhatsApp message opened for customer: ${currentBillData.customerName}`, 'success');
+    } else {
+        showNotification(`No phone number found for customer: ${currentBillData.customerName}`, 'error');
+    }
+    
+    // Always send to owner (with delay to avoid popup blocking)
+    setTimeout(() => {
+        const ownerUrl = `https://wa.me/${ownerPhone.replace('+', '')}?text=${encodedOwnerMessage}`;
+        window.open(ownerUrl, '_blank');
+        messagesSent++;
+        
+        showNotification(`WhatsApp message opened for owner: ${currentBillData.ownerName}`, 'success');
+        
+        // Summary notification
+        setTimeout(() => {
+            showNotification(`${messagesSent} WhatsApp messages opened successfully!`, 'info');
+        }, 1000);
+    }, 1500);
+}
+
+function createCustomerWhatsAppMessage(data) {
+    return `🐟 *Fish Bill - ${data.date}*
+
+Dear ${data.customerName},
+
+Thank you for your purchase! Here are your bill details:
+
+*Fish Details:*
+🐠 Fish Type: ${data.fishType}
+⚖️ Quantity: ${data.quantity} kg
+💰 Rate: ₹${data.rate}/kg
+💳 Total Amount: ₹${data.amount}
+
+*Payment Summary:*
+💸 Paid Today: ₹${data.paymentMade}
+🏦 Previous Balance: ₹${data.oldBalance}
+🔢 Remaining Balance: ₹${data.remainingBalance}
+
+📞 Thank you for your business!
+*Thanjavur Fish Sales*
+Contact: +91-9876543210
+
+_Fresh fish, honest prices._`;
+}
+
+function createOwnerWhatsAppMessage(data) {
+    return `📊 *FISH SALE REPORT - ${data.date}*
+
+*Transaction Details:*
+👤 Customer: ${data.customerName}
+🐠 Fish: ${data.fishType}
+⚖️ Quantity: ${data.quantity} kg
+💰 Rate: ₹${data.rate}/kg
+
+*Financial Summary:*
+💳 Sale Amount: ₹${data.amount}
+💸 Payment Received: ₹${data.paymentMade}
+🏦 Previous Balance: ₹${data.oldBalance}
+🔢 New Balance: ₹${data.remainingBalance}
+
+${data.remainingBalance > 0 ? '⚠️ *PENDING BALANCE: ₹' + data.remainingBalance + '*' : '✅ *ACCOUNT CLEARED*'}
+
+*Thanjavur Fish Sales - Owner Copy*`;
+}
+
+function showSuccess() {
+    successMessage.classList.remove('hidden');
+    setTimeout(() => {
+        successMessage.classList.add('hidden');
+    }, 5000);
+}
+
+function showLoading(show) {
+    if (show) {
+        loadingOverlay.classList.remove('hidden');
+    } else {
+        loadingOverlay.classList.add('hidden');
+    }
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transform transition-all duration-300 translate-x-full`;
+    
+    // Set colors based on type
+    const colors = {
+        success: 'bg-green-500 text-white',
+        error: 'bg-red-500 text-white',
+        info: 'bg-blue-500 text-white'
+    };
+    
+    notification.className += ` ${colors[type] || colors.info}`;
+    notification.innerHTML = `
+        <div class="flex items-center gap-2">
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            <span>${message}</span>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+        notification.classList.remove('translate-x-full');
+    }, 100);
+    
+    // Animate out and remove
+    setTimeout(() => {
+        notification.classList.add('translate-x-full');
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 300);
+    }, 3000);
+}
