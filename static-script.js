@@ -28,6 +28,7 @@ let customers = [
 ];
 
 let currentBillData = null;
+let generatedPdfBlob = null; // Store the PDF blob for sharing
 
 // DOM elements
 const customerSelect = document.getElementById('customerName');
@@ -308,7 +309,10 @@ function generateStaticPDF() {
         doc.text('Thank you for your business! Fresh fish, honest prices.', 20, 250);
         doc.text('For any queries, contact us at +91-9876543210', 20, 260);
         
-        // Save the PDF
+        // Generate PDF blob for sharing
+        generatedPdfBlob = doc.output('blob');
+        
+        // Save the PDF for download
         const filename = `bill_${currentBillData.customerName}_${currentBillData.date}.pdf`;
         doc.save(filename);
         
@@ -325,24 +329,58 @@ function generateStaticPDF() {
 }
 
 function sendToWhatsApp() {
-    if (!currentBillData) {
+    if (!currentBillData || !generatedPdfBlob) {
         showNotification('Please generate a bill first', 'error');
         return;
     }
     
-    // Create WhatsApp messages
-    const customerMessage = createCustomerWhatsAppMessage(currentBillData);
-    const ownerMessage = createOwnerWhatsAppMessage(currentBillData);
+    // Create a simple text message with bill summary
+    const summaryMessage = createBillSummaryMessage(currentBillData);
     
-    // Copy customer message to clipboard
-    copyToClipboard(customerMessage);
+    // Copy summary message to clipboard
+    copyToClipboard(summaryMessage);
     
-    // Open WhatsApp Web without specific number - just opens the main interface
-    const whatsappUrl = 'https://web.whatsapp.com/';
+    // Detect if on mobile device
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    let whatsappUrl;
+    if (isMobile) {
+        // On mobile: Use whatsapp:// to open WhatsApp app directly
+        whatsappUrl = 'whatsapp://send?text=' + encodeURIComponent(summaryMessage);
+    } else {
+        // On desktop: Open WhatsApp Web with message
+        whatsappUrl = 'https://web.whatsapp.com/send?text=' + encodeURIComponent(summaryMessage);
+    }
+    
+    // Try to open WhatsApp
     window.open(whatsappUrl, '_blank');
     
-    // Show instructions for demo
-    showDemoInstructions(customerMessage, ownerMessage);
+    // Fallback for mobile if whatsapp:// doesn't work
+    if (isMobile) {
+        setTimeout(() => {
+            // If still on same page after 2 seconds, try alternative
+            const fallbackUrl = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(summaryMessage);
+            window.open(fallbackUrl, '_blank');
+        }, 2000);
+    }
+    
+    // Show instructions for demo with file sharing
+    showFileShareInstructions(summaryMessage);
+}
+
+function createBillSummaryMessage(data) {
+    return `🐟 Fish Bill - ${data.date}
+
+Customer: ${data.customerName}
+Fish: ${data.fishType} (${data.quantity} kg @ ₹${data.rate}/kg)
+Amount: ₹${data.amount}
+Paid: ₹${data.paymentMade}
+Balance: ₹${data.remainingBalance}
+
+📎 Detailed PDF bill attached
+
+Thanjavur Fish Sales
++91-9876543210`;
 }
 
 function createCustomerWhatsAppMessage(data) {
@@ -426,12 +464,18 @@ function fallbackCopyTextToClipboard(text) {
     document.body.removeChild(textArea);
 }
 
-function showDemoInstructions(customerMessage, ownerMessage) {
+function showFileShareInstructions(summaryMessage) {
     // Remove any existing demo modal
     const existingModal = document.getElementById('demoModal');
     if (existingModal) {
         existingModal.remove();
     }
+    
+    // Detect device type for instructions
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const deviceInstructions = isMobile ? 
+        'WhatsApp app is opening on your mobile device' : 
+        'WhatsApp Web is opening in new tab';
     
     // Create demo instructions modal
     const modal = document.createElement('div');
@@ -446,54 +490,56 @@ function showDemoInstructions(customerMessage, ownerMessage) {
                         <i class="fab fa-whatsapp text-xl"></i>
                     </div>
                     <div>
-                        <h3 class="text-xl font-bold text-gray-800">WhatsApp Demo Instructions</h3>
-                        <p class="text-gray-600">Customer bill message copied to clipboard!</p>
+                        <h3 class="text-xl font-bold text-gray-800">WhatsApp PDF Sharing Demo</h3>
+                        <p class="text-gray-600">Bill summary copied & PDF ready to share!</p>
                     </div>
                 </div>
                 
                 <div class="space-y-6">
                     <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
-                        <h4 class="font-semibold text-blue-800 mb-2">📱 Demo Steps:</h4>
+                        <h4 class="font-semibold text-blue-800 mb-2">� PDF Sharing Steps (${isMobile ? 'Mobile' : 'Desktop'}):</h4>
                         <ol class="text-blue-700 space-y-2 text-sm">
-                            <li><strong>1.</strong> WhatsApp Web is opening in new tab</li>
-                            <li><strong>2.</strong> Search for any contact manually</li>
-                            <li><strong>3.</strong> Paste the copied message (Ctrl+V / Cmd+V)</li>
-                            <li><strong>4.</strong> Show the professional bill format</li>
-                            <li><strong>5.</strong> Demonstrate the complete flow!</li>
+                            <li><strong>1.</strong> ${deviceInstructions}</li>
+                            <li><strong>2.</strong> Search and select any contact</li>
+                            <li><strong>3.</strong> Paste the bill summary (${isMobile ? 'Long press & paste' : 'Ctrl+V / Cmd+V'})</li>
+                            <li><strong>4.</strong> Click attachment button (📎) in WhatsApp</li>
+                            <li><strong>5.</strong> Select "Document" and choose the downloaded PDF</li>
+                            <li><strong>6.</strong> Send both message and PDF file!</li>
                         </ol>
                     </div>
                     
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <h4 class="font-semibold text-gray-800 mb-3">📋 Customer Message (Already Copied):</h4>
-                        <div class="bg-white p-3 rounded border text-sm font-mono text-gray-700 max-h-40 overflow-y-auto">
-                            ${customerMessage.replace(/\n/g, '<br>')}
-                        </div>
-                        <button onclick="copyToClipboard(\`${customerMessage.replace(/`/g, '\\`')}\`)" 
-                                class="mt-2 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">
-                            📋 Copy Customer Message
-                        </button>
+                    <div class="bg-orange-50 p-4 rounded-lg border-l-4 border-orange-500">
+                        <h4 class="font-semibold text-orange-800 mb-2">� PDF File Location:</h4>
+                        <p class="text-orange-700 text-sm">
+                            The PDF bill was downloaded to your Downloads folder:<br>
+                            <code class="bg-white px-2 py-1 rounded text-xs">bill_${currentBillData.customerName}_${currentBillData.date}.pdf</code>
+                        </p>
                     </div>
                     
                     <div class="bg-gray-50 p-4 rounded-lg">
-                        <h4 class="font-semibold text-gray-800 mb-3">👔 Owner Message:</h4>
+                        <h4 class="font-semibold text-gray-800 mb-3">� Bill Summary (Already Copied):</h4>
                         <div class="bg-white p-3 rounded border text-sm font-mono text-gray-700 max-h-40 overflow-y-auto">
-                            ${ownerMessage.replace(/\n/g, '<br>')}
+                            ${summaryMessage.replace(/\n/g, '<br>')}
                         </div>
-                        <button onclick="copyToClipboard(\`${ownerMessage.replace(/`/g, '\\`')}\`)" 
-                                class="mt-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm">
-                            📋 Copy Owner Message
+                        <button onclick="copyToClipboard(\`${summaryMessage.replace(/`/g, '\\`')}\`)" 
+                                class="mt-2 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                            📋 Copy Message Again
                         </button>
                     </div>
                 </div>
                 
                 <div class="flex gap-3 mt-6 pt-4 border-t">
-                    <button onclick="window.open('https://web.whatsapp.com/', '_blank')" 
+                    <button onclick="window.open('${isMobile ? 'whatsapp://' : 'https://web.whatsapp.com/'}', '_blank')" 
                             class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg font-semibold">
-                        🔗 Open WhatsApp Web Again
+                        🔗 Open WhatsApp Again
+                    </button>
+                    <button onclick="downloadPdfAgain()" 
+                            class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold">
+                        📥 Download PDF Again
                     </button>
                     <button onclick="document.getElementById('demoModal').remove()" 
-                            class="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg font-semibold">
-                        ✅ Close Instructions
+                            class="bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg font-semibold">
+                        ✅ Close
                     </button>
                 </div>
             </div>
@@ -508,6 +554,38 @@ function showDemoInstructions(customerMessage, ownerMessage) {
             modal.remove();
         }
     });
+}
+
+function downloadPdfAgain() {
+    if (generatedPdfBlob && currentBillData) {
+        const url = window.URL.createObjectURL(generatedPdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bill_${currentBillData.customerName}_${currentBillData.date}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showNotification('PDF downloaded again!', 'success');
+    }
+}
+
+function openWhatsAppAgain() {
+    if (!currentBillData) return;
+    
+    const summaryMessage = createBillSummaryMessage(currentBillData);
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    let whatsappUrl;
+    if (isMobile) {
+        // On mobile: Use whatsapp:// to open WhatsApp app with message
+        whatsappUrl = 'whatsapp://send?text=' + encodeURIComponent(summaryMessage);
+    } else {
+        // On desktop: Open WhatsApp Web with message
+        whatsappUrl = 'https://web.whatsapp.com/send?text=' + encodeURIComponent(summaryMessage);
+    }
+    
+    window.open(whatsappUrl, '_blank');
 }
 
 function showSuccess() {
